@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="service.siri.remote" name="Siri Remote Service" version="1.0.0" provider-name="Ryan">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.service" library="service.py" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Apple Siri Remote support for Kodi</summary>
+        <description lang="en_GB">Connects to an Apple Siri Remote via Bluetooth and maps button presses to Kodi actions. Supports navigation, play/pause, volume control, and more.</description>
+        <platform>linux</platform>
+        <license>MIT</license>
+        <forum></forum>
+        <website></website>
+        <source></source>
+        <news>v1.0.0 (2025-10-17)
+- Initial release
+- Support for Apple Siri Remote button mapping
+- Configurable MAC address via settings
+- Enable/disable toggle
+        </news>
+        <assets>
+            <icon>resources/icon.png</icon>
+        </assets>
+    </extension>
+</addon>
+

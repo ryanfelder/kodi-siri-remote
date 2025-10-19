@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="30000">
+        <setting id="enabled" type="bool" label="30001" default="true" />
+        <setting id="mac_address" type="text" label="30003" default="" />
+    </category>
+    <category label="30100">
+        <setting id="debug_enabled" type="bool" label="30101" default="false" />
+        <setting id="debug_buttons" type="bool" label="30103" default="false" enable="eq(-1,true)" />
+    </category>
+</settings>
+

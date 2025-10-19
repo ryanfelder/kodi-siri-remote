@@ -1,0 +1,6 @@
+# Requirements for Siri Remote Kodi Addon (Linux only)
+# All dependencies are bundled in lib/ - no system installation needed
+
+# dbus-fast - for BlueZ D-Bus communication (bundled in lib/)
+# We communicate directly with BlueZ via D-Bus, no Bleak needed
+
