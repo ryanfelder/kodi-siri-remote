@@ -1,2 +1,2 @@
-# Remote package for bleak-based Siri Remote
+# Remote package for Siri Remote
 

@@ -63,10 +63,8 @@ class SiriRemote:
             try:
                 await self._setup()
             except Exception as e:
-                self._log(f"Connection error: {type(e).__name__}: {e}")
-                import traceback
-                self._log(f"Traceback: {traceback.format_exc()}")
-                self._log("Releasing all keys and reconnecting in 2s...")
+                self._log(f"Connection error: {e}")
+                self._log("Reconnecting in 2 seconds...")
                 self._listener.event_button(0)
                 await asyncio.sleep(2)
 
@@ -88,11 +86,11 @@ class SiriRemote:
             # Check if connected
             connected = await device_props.call_get('org.bluez.Device1', 'Connected')
             if not connected.value:
-                self._log("Device not connected, connecting...")
+                self._log("Connecting to device...")
                 await device_iface.call_connect()
                 await asyncio.sleep(1)
             
-            self._log(f"Connected to device!")
+            self._log("Connected")
             
             # Discover GATT services and characteristics
             await self._discover_characteristics(device_path)
@@ -103,7 +101,7 @@ class SiriRemote:
             # Write magic bytes
             await self._write_magic_bytes()
             
-            self._log("Setup complete! Waiting for notifications...")
+            self._log("Ready")
             
             # Keep running
             self._running = True
@@ -116,8 +114,6 @@ class SiriRemote:
 
     async def _discover_characteristics(self, device_path):
         """Discover all GATT characteristics"""
-        self._log("Discovering characteristics...")
-        
         # Get all managed objects under the device
         om_introspection = await self._bus.introspect('org.bluez', '/')
         om_proxy = self._bus.get_proxy_object('org.bluez', '/', om_introspection)
@@ -135,26 +131,17 @@ class SiriRemote:
                 handle = char_props.get('Handle')
                 handle_val = handle.value if handle else None
                 
-                # Log ALL characteristics for debugging
-                self._log(f"Characteristic: {obj_path} UUID: {uuid} Handle: {handle_val}")
-                
                 # Store characteristic paths
                 if uuid == self._UUID_BATTERY.lower():
                     self._characteristics['battery'] = obj_path
-                    self._log(f"  -> Matched: battery")
                 elif uuid == self._UUID_POWER.lower():
                     self._characteristics['power'] = obj_path
-                    self._log(f"  -> Matched: power")
                 elif uuid == self._UUID_HID_INPUT.lower():
                     # Subscribe to all HID_INPUT - we'll determine type by data
                     key = f'hid_{handle_val}'
                     self._characteristics[key] = obj_path
-                    self._log(f"  -> Matched: HID_INPUT (handle {handle_val})")
                 elif uuid == self._UUID_MAGIC_WRITE.lower():
                     self._characteristics['magic'] = obj_path
-                    self._log(f"  -> Matched: magic")
-        
-        self._log(f"Discovery complete. Found {len(self._characteristics)} characteristics")
 
     async def _enable_notifications(self):
         """Enable notifications on characteristics"""
@@ -179,9 +166,8 @@ class SiriRemote:
                     
                     # Start notify
                     await char_iface.call_start_notify()
-                    self._log(f"Enabled notifications for {name}")
                 except Exception as e:
-                    self._log(f"Could not enable notifications for {name}: {e}")
+                    self._log(f"Warning: Could not enable notifications for {name}")
 
     async def _write_magic_bytes(self):
         """Write magic bytes to enable input"""
@@ -192,9 +178,8 @@ class SiriRemote:
                 char_iface = char_proxy.get_interface('org.bluez.GattCharacteristic1')
                 
                 await char_iface.call_write_value([0xF0, 0x00], {'type': Variant('s', 'request')})
-                self._log("Magic bytes written successfully")
             except Exception as e:
-                self._log(f"Warning: Could not write magic bytes: {e}")
+                self._log(f"Warning: Could not write magic bytes")
 
     def _handle_notification(self, char_name, data: bytearray):
         """Handle incoming notification"""

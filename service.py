@@ -258,58 +258,38 @@ class SiriRemoteService:
     
     async def connect_remote(self, mac):
         """Connect to the Siri Remote"""
-        self.log(f"Connecting to Siri Remote at {mac}...", xbmc.LOGINFO)
-        self.log("Note: Device must be paired and trusted in your OS before connecting", xbmc.LOGINFO)
+        self.log(f"Connecting to Siri Remote...", xbmc.LOGINFO)
         
         self.listener = KodiRemoteListener(self.addon)
         
         # Create logger function for the remote
+        debug_enabled = self.addon.getSetting('debug_enabled') == 'true'
         def remote_logger(msg):
-            self.log(f"[Remote] {msg}", xbmc.LOGINFO)  # Changed to INFO so we can see it
+            if debug_enabled:
+                self.log(f"[Remote] {msg}", xbmc.LOGINFO)
         
-        self.log("Creating SiriRemote instance...", xbmc.LOGINFO)
         self.remote = SiriRemote(mac, self.listener, logger=remote_logger)
-        
-        self.log("Starting connection...", xbmc.LOGINFO)
         try:
             await self.remote.connect_and_run()
         except KeyboardInterrupt:
             self.log("Connection interrupted", xbmc.LOGINFO)
         except Exception as e:
-            error_name = type(e).__name__
             error_msg = str(e)
             
-            self.log(f"Remote connection error: {error_name}: {error_msg}", xbmc.LOGERROR)
-            
             # Provide helpful messages for common issues
-            if "org.bluez.Error" in error_msg or "DBusError" in error_name:
-                self.log("", xbmc.LOGERROR)
-                self.log("═══════════════════════════════════════════════════════", xbmc.LOGERROR)
-                self.log("⚠ BLUETOOTH PAIRING/AUTHORIZATION ERROR", xbmc.LOGERROR)
-                self.log("", xbmc.LOGERROR)
-                self.log("The Siri Remote must be paired AND trusted before use.", xbmc.LOGERROR)
-                self.log("", xbmc.LOGERROR)
-                self.log("To fix this, pair your remote using your OS:", xbmc.LOGERROR)
-                self.log("  1. Put remote in pairing mode (hold Menu + Volume Up)", xbmc.LOGERROR)
-                self.log("  2. Pair via your OS Bluetooth settings", xbmc.LOGERROR)
-                self.log("  3. Make sure to TRUST the device after pairing", xbmc.LOGERROR)
-                self.log("═══════════════════════════════════════════════════════", xbmc.LOGERROR)
-                self.log("", xbmc.LOGERROR)
-            elif "CancelledError" in error_name:
-                self.log("", xbmc.LOGERROR)
-                self.log("═══════════════════════════════════════════════════════", xbmc.LOGERROR)
-                self.log("⚠ CONNECTION CANCELLED", xbmc.LOGERROR)
-                self.log("", xbmc.LOGERROR)
-                self.log("This can happen if the remote is already connected to", xbmc.LOGERROR)
-                self.log("BlueZ but not accessible. Try:", xbmc.LOGERROR)
-                self.log("  1. Disconnect the remote from Bluetooth settings", xbmc.LOGERROR)
-                self.log("  2. Restart the addon", xbmc.LOGERROR)
-                self.log("  3. The addon will reconnect automatically", xbmc.LOGERROR)
-                self.log("═══════════════════════════════════════════════════════", xbmc.LOGERROR)
-                self.log("", xbmc.LOGERROR)
+            if "org.bluez.Error" in error_msg or "DBusError" in type(e).__name__:
+                self.log("Bluetooth connection failed. Please ensure your Siri Remote is paired and trusted in your OS Bluetooth settings.", xbmc.LOGERROR)
+            elif "CancelledError" in type(e).__name__:
+                self.log("Connection was cancelled. Try disconnecting the remote from Bluetooth settings and restart the addon.", xbmc.LOGERROR)
+            else:
+                self.log(f"Remote connection error: {error_msg}", xbmc.LOGERROR)
             
-            import traceback
-            self.log(f"Full traceback:\n{traceback.format_exc()}", xbmc.LOGERROR)
+            # Show detailed traceback only if debug is enabled
+            debug_enabled = self.addon.getSetting('debug_enabled') == 'true'
+            if debug_enabled:
+                import traceback
+                self.log(f"Traceback:\n{traceback.format_exc()}", xbmc.LOGERROR)
+            
             self.notify(30203, xbmcgui.NOTIFICATION_ERROR)  # "Failed to connect"
             raise
     
@@ -332,38 +312,33 @@ class SiriRemoteService:
             return
         
         mac_address = mac_address.strip()
-        self.log(f"MAC address configured: {mac_address}", xbmc.LOGINFO)
         
         # Start async event loop
         try:
-            self.log("Creating asyncio event loop...", xbmc.LOGINFO)
             # Create a new event loop for this thread
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
             
-            self.log("Event loop created, starting remote connection...", xbmc.LOGINFO)
             # Run the remote connection
             self.notify(30201, xbmcgui.NOTIFICATION_INFO)  # "Connected"
             self.loop.run_until_complete(self.connect_remote(mac_address))
             
-            self.log("Event loop completed", xbmc.LOGINFO)
-            
         except KeyboardInterrupt:
             self.log("Service interrupted", xbmc.LOGINFO)
         except Exception as e:
-            self.log(f"Service error: {type(e).__name__}: {e}", xbmc.LOGERROR)
-            import traceback
-            self.log(f"Full traceback:\n{traceback.format_exc()}", xbmc.LOGERROR)
+            self.log(f"Service error: {e}", xbmc.LOGERROR)
+            # Show detailed traceback only if debug is enabled
+            debug_enabled = self.addon.getSetting('debug_enabled') == 'true'
+            if debug_enabled:
+                import traceback
+                self.log(f"Traceback:\n{traceback.format_exc()}", xbmc.LOGERROR)
         finally:
             self.cleanup()
     
     def cleanup(self):
         """Clean up resources and disconnect from remote"""
-        self.log("Cleaning up...", xbmc.LOGINFO)
-        
         # Stop the remote
         if self.remote:
-            self.log("Stopping remote connection...", xbmc.LOGINFO)
             self.remote.stop()
             
             # Give it a moment to disconnect
@@ -372,11 +347,10 @@ class SiriRemoteService:
         
         # Close event loop if it exists
         if self.loop and not self.loop.is_closed():
-            self.log("Closing event loop...", xbmc.LOGINFO)
             self.loop.close()
         
         self.notify(30202, xbmcgui.NOTIFICATION_INFO)  # "Disconnected"
-        self.log("Service stopped and Bluetooth disconnected", xbmc.LOGINFO)
+        self.log("Service stopped", xbmc.LOGINFO)
 
 
 if __name__ == '__main__':
