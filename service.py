@@ -12,6 +12,8 @@ import xbmcvfs
 import asyncio
 import sys
 import os
+import json
+import time
 
 # Add the addon directory to the path so we can import our modules
 addon = xbmcaddon.Addon()
@@ -28,7 +30,7 @@ from remote.remote import SiriRemote, RemoteListener
 
 class KodiRemoteListener(RemoteListener):
     """Listener that converts Siri Remote events to Kodi actions"""
-    
+
     def __init__(self, addon):
         self.addon = addon
         self.debug_enabled = addon.getSetting('debug_enabled') == 'true'
@@ -64,7 +66,9 @@ class KodiRemoteListener(RemoteListener):
             if self.debug_buttons:
                 self.log("Screensaver active - waking and discarding button event", xbmc.LOGINFO)
             # Send a simple action to wake the screensaver
-            xbmc.executebuiltin('Action(Select)')
+            xbmc.executebuiltin('InhibitScreensaver(True)')
+            time.sleep(0.5)
+            xbmc.executebuiltin('InhibitScreensaver(False)')
             return
         
         # Map buttons to Kodi actions
