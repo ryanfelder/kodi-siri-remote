@@ -31,14 +31,15 @@ from remote.remote import SiriRemote, RemoteListener
 class KodiRemoteListener(RemoteListener):
     """Listener that converts Siri Remote events to Kodi actions"""
 
-    def __init__(self, addon):
+    def __init__(self, addon, remote_name="Remote"):
         self.addon = addon
+        self.remote_name = remote_name
         self.debug_enabled = addon.getSetting('debug_enabled') == 'true'
         self.debug_buttons = addon.getSetting('debug_buttons') == 'true'
         
     def log(self, msg, level=xbmc.LOGDEBUG):
         """Log message to Kodi log"""
-        xbmc.log(f"[Siri Remote] {msg}", level)
+        xbmc.log(f"[Siri Remote - {self.remote_name}] {msg}", level)
     
     def event_battery(self, percent: int):
         """Battery level event"""
@@ -251,9 +252,8 @@ class SiriRemoteService:
     def __init__(self):
         self.addon = xbmcaddon.Addon()
         self.monitor = xbmc.Monitor()
-        self.remote = None
-        self.listener = None
-        self.task = None
+        self.remotes = []  # List of remote instances
+        self.tasks = []    # List of async tasks
         self.loop = None
         
     def log(self, msg, level=xbmc.LOGDEBUG):
@@ -266,42 +266,73 @@ class SiriRemoteService:
         message = self.addon.getLocalizedString(msg_id)
         xbmcgui.Dialog().notification(title, message, level, 3000)
     
-    async def connect_remote(self, mac):
-        """Connect to the Siri Remote"""
-        self.log(f"Connecting to Siri Remote...", xbmc.LOGINFO)
+    async def connect_remote(self, remote_name, mac):
+        """Connect to a single Siri Remote and handle reconnections
         
-        self.listener = KodiRemoteListener(self.addon)
+        Args:
+            remote_name: Display name for the remote
+            mac: MAC address of the remote
+        """
+        self.log(f"Starting connection handler for {remote_name} ({mac})...", xbmc.LOGINFO)
+        
+        listener = KodiRemoteListener(self.addon, remote_name)
         
         # Create logger function for the remote
         debug_enabled = self.addon.getSetting('debug_enabled') == 'true'
         def remote_logger(msg):
             if debug_enabled:
-                self.log(f"[Remote] {msg}", xbmc.LOGINFO)
+                self.log(f"[{remote_name}] {msg}", xbmc.LOGINFO)
         
-        self.remote = SiriRemote(mac, self.listener, logger=remote_logger)
+        remote = SiriRemote(mac, listener, logger=remote_logger)
+        self.remotes.append(remote)
+        
         try:
-            await self.remote.connect_and_run()
+            await remote.connect_and_run()
         except KeyboardInterrupt:
-            self.log("Connection interrupted", xbmc.LOGINFO)
+            self.log(f"{remote_name}: Connection interrupted", xbmc.LOGINFO)
         except Exception as e:
             error_msg = str(e)
             
             # Provide helpful messages for common issues
             if "org.bluez.Error" in error_msg or "DBusError" in type(e).__name__:
-                self.log("Bluetooth connection failed. Please ensure your Siri Remote is paired and trusted in your OS Bluetooth settings.", xbmc.LOGERROR)
+                self.log(f"{remote_name}: Bluetooth connection failed. Please ensure your Siri Remote is paired and trusted in your OS Bluetooth settings.", xbmc.LOGERROR)
             elif "CancelledError" in type(e).__name__:
-                self.log("Connection was cancelled. Try disconnecting the remote from Bluetooth settings and restart the addon.", xbmc.LOGERROR)
+                self.log(f"{remote_name}: Connection was cancelled. Try disconnecting the remote from Bluetooth settings and restart the addon.", xbmc.LOGERROR)
             else:
-                self.log(f"Remote connection error: {error_msg}", xbmc.LOGERROR)
+                self.log(f"{remote_name}: Remote connection error: {error_msg}", xbmc.LOGERROR)
             
             # Show detailed traceback only if debug is enabled
             debug_enabled = self.addon.getSetting('debug_enabled') == 'true'
             if debug_enabled:
                 import traceback
-                self.log(f"Traceback:\n{traceback.format_exc()}", xbmc.LOGERROR)
-            
-            self.notify(30203, xbmcgui.NOTIFICATION_ERROR)  # "Failed to connect"
-            raise
+                self.log(f"{remote_name} Traceback:\n{traceback.format_exc()}", xbmc.LOGERROR)
+    
+    async def run_all_remotes(self, remotes):
+        """Run connection tasks for all configured remotes concurrently
+        
+        Args:
+            remotes: List of tuples (name, mac_address) for enabled remotes
+        """
+        if not remotes:
+            self.log("No remotes to connect", xbmc.LOGWARNING)
+            return
+        
+        self.log(f"Starting {len(remotes)} remote connection(s)...", xbmc.LOGINFO)
+        
+        # Create tasks for all remotes
+        tasks = []
+        for remote_name, mac in remotes:
+            task = asyncio.create_task(self.connect_remote(remote_name, mac))
+            tasks.append(task)
+            self.tasks.append(task)
+        
+        # Wait for all tasks (they run indefinitely with auto-reconnect)
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        except KeyboardInterrupt:
+            self.log("All remote connections interrupted", xbmc.LOGINFO)
+        except Exception as e:
+            self.log(f"Error in remote connection handler: {e}", xbmc.LOGERROR)
     
     def _migrate_old_settings(self):
         """Migrate old single-remote settings to new multi-remote format"""
@@ -343,7 +374,6 @@ class SiriRemoteService:
         self._migrate_old_settings()
         
         # Get configured remotes
-        # TODO: Multi-remote support - currently only connecting to first remote
         remotes = self._get_configured_remotes()
         
         if not remotes:
@@ -351,11 +381,9 @@ class SiriRemoteService:
             self.notify(30204, xbmcgui.NOTIFICATION_WARNING)  # "No MAC address"
             return
         
-        # For now, only use the first remote
-        # Multi-remote connection support will be added in a future update
-        remote_name, mac_address = remotes[0]
-        if len(remotes) > 1:
-            self.log(f"Multiple remotes configured. Currently connecting to first: {remote_name}", xbmc.LOGINFO)
+        self.log(f"Found {len(remotes)} enabled remote(s)", xbmc.LOGINFO)
+        for name, mac in remotes:
+            self.log(f"  - {name}: {mac}", xbmc.LOGINFO)
         
         # Start async event loop
         try:
@@ -363,9 +391,9 @@ class SiriRemoteService:
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
             
-            # Run the remote connection
+            # Run all remote connections concurrently
             self.notify(30201, xbmcgui.NOTIFICATION_INFO)  # "Connected"
-            self.loop.run_until_complete(self.connect_remote(mac_address))
+            self.loop.run_until_complete(self.run_all_remotes(remotes))
             
         except KeyboardInterrupt:
             self.log("Service interrupted", xbmc.LOGINFO)
@@ -380,14 +408,25 @@ class SiriRemoteService:
             self.cleanup()
     
     def cleanup(self):
-        """Clean up resources and disconnect from remote"""
-        # Stop the remote
-        if self.remote:
-            self.remote.stop()
-            
-            # Give it a moment to disconnect
+        """Clean up resources and disconnect from all remotes"""
+        self.log("Cleaning up...", xbmc.LOGINFO)
+        
+        # Stop all remotes
+        for remote in self.remotes:
+            try:
+                remote.stop()
+            except Exception as e:
+                self.log(f"Error stopping remote: {e}", xbmc.LOGERROR)
+        
+        # Give them a moment to disconnect
+        if self.remotes:
             import time
             time.sleep(0.5)
+        
+        # Cancel all tasks
+        for task in self.tasks:
+            if not task.done():
+                task.cancel()
         
         # Close event loop if it exists
         if self.loop and not self.loop.is_closed():
