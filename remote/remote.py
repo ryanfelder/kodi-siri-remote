@@ -59,14 +59,27 @@ class SiriRemote:
 
     async def connect_and_run(self):
         """Connect to the remote and run the event loop with auto-reconnect"""
+        first_attempt = True
         while True:
             try:
                 await self._setup()
             except Exception as e:
-                self._log(f"Connection error: {e}")
-                self._log("Reconnecting in 2 seconds...")
+                error_type = type(e).__name__
+                error_msg = str(e)
+                
+                # On first attempt, use a longer delay to let system stabilize
+                delay = 5 if first_attempt else 2
+                
+                # Provide helpful error context
+                if "Unknown object" in error_msg or "does not exist" in error_msg:
+                    self._log(f"Device not found in Bluetooth. Ensure {self._mac} is paired and trusted. Retrying in {delay}s...")
+                else:
+                    self._log(f"Connection error ({error_type}): {error_msg}")
+                    self._log(f"Reconnecting in {delay} seconds...")
+                
                 self._listener.event_button(0)
-                await asyncio.sleep(2)
+                await asyncio.sleep(delay)
+                first_attempt = False
 
     async def _setup(self):
         """Setup connection and enable notifications via D-Bus"""

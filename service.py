@@ -318,6 +318,7 @@ class SiriRemoteService:
             return
         
         self.log(f"Starting {len(remotes)} remote connection(s)...", xbmc.LOGINFO)
+        self.log("Note: Remote connections will retry automatically if devices are not immediately available", xbmc.LOGINFO)
         
         # Create tasks for all remotes
         tasks = []
@@ -366,9 +367,47 @@ class SiriRemoteService:
         
         return remotes
     
+    async def _wait_for_bluetooth(self, max_wait=30):
+        """Wait for Bluetooth D-Bus service to be ready
+        
+        Args:
+            max_wait: Maximum seconds to wait for Bluetooth service
+            
+        Returns:
+            bool: True if service is ready, False if timeout
+        """
+        from dbus_fast.aio import MessageBus
+        from dbus_fast.constants import BusType
+        
+        self.log("Waiting for Bluetooth service to be ready...", xbmc.LOGINFO)
+        
+        for attempt in range(max_wait):
+            try:
+                # Try to connect to D-Bus and check if bluez is available
+                bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+                try:
+                    # Try to introspect the bluez root object
+                    await bus.introspect('org.bluez', '/')
+                    self.log("Bluetooth service is ready", xbmc.LOGINFO)
+                    return True
+                finally:
+                    bus.disconnect()
+            except Exception as e:
+                if attempt == 0:
+                    self.log(f"Bluetooth not ready yet, waiting... ({e})", xbmc.LOGDEBUG)
+                await asyncio.sleep(1)
+        
+        self.log(f"Bluetooth service not available after {max_wait} seconds", xbmc.LOGERROR)
+        return False
+    
     def start(self):
         """Start the service"""
         self.log("Service starting...", xbmc.LOGINFO)
+        
+        # Wait a moment for system to stabilize after boot
+        # This helps ensure Bluetooth and D-Bus services are ready
+        self.log("Waiting for system initialization...", xbmc.LOGINFO)
+        time.sleep(3)
         
         # Migrate old settings if they exist
         self._migrate_old_settings()
@@ -391,7 +430,16 @@ class SiriRemoteService:
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
             
+            # Wait for Bluetooth service to be ready
+            bt_ready = self.loop.run_until_complete(self._wait_for_bluetooth(max_wait=30))
+            if not bt_ready:
+                self.log("Cannot start: Bluetooth service unavailable", xbmc.LOGERROR)
+                self.notify(30203, xbmcgui.NOTIFICATION_ERROR)  # "Failed to connect"
+                return
+            
             # Run all remote connections concurrently
+            # Note: "Connected" notification shown here means service is starting,
+            # individual remotes will connect/reconnect automatically
             self.notify(30201, xbmcgui.NOTIFICATION_INFO)  # "Connected"
             self.loop.run_until_complete(self.run_all_remotes(remotes))
             
