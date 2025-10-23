@@ -1,8 +1,25 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
     <category label="30000">
-        <setting id="enabled" type="bool" label="30001" default="true" />
-        <setting id="mac_address" type="text" label="30003" default="" />
+        <setting label="30010" type="lsep" />
+        <setting id="remote1_enabled" type="bool" label="30011" default="true" />
+        <setting id="remote1_mac" type="text" label="30012" default="" enable="eq(-1,true)" />
+        <setting id="remote1_name" type="text" label="30013" default="Remote 1" enable="eq(-2,true)" />
+        
+        <setting label="30020" type="lsep" />
+        <setting id="remote2_enabled" type="bool" label="30021" default="false" />
+        <setting id="remote2_mac" type="text" label="30022" default="" enable="eq(-1,true)" />
+        <setting id="remote2_name" type="text" label="30023" default="Remote 2" enable="eq(-2,true)" />
+        
+        <setting label="30030" type="lsep" />
+        <setting id="remote3_enabled" type="bool" label="30031" default="false" />
+        <setting id="remote3_mac" type="text" label="30032" default="" enable="eq(-1,true)" />
+        <setting id="remote3_name" type="text" label="30033" default="Remote 3" enable="eq(-2,true)" />
+        
+        <setting label="30040" type="lsep" />
+        <setting id="remote4_enabled" type="bool" label="30041" default="false" />
+        <setting id="remote4_mac" type="text" label="30042" default="" enable="eq(-1,true)" />
+        <setting id="remote4_name" type="text" label="30043" default="Remote 4" enable="eq(-2,true)" />
     </category>
     <category label="30100">
         <setting id="debug_enabled" type="bool" label="30101" default="false" />

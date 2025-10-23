@@ -303,25 +303,59 @@ class SiriRemoteService:
             self.notify(30203, xbmcgui.NOTIFICATION_ERROR)  # "Failed to connect"
             raise
     
+    def _migrate_old_settings(self):
+        """Migrate old single-remote settings to new multi-remote format"""
+        old_enabled = self.addon.getSetting('enabled')
+        old_mac = self.addon.getSetting('mac_address')
+        
+        # If old settings exist and remote1 is not configured, migrate
+        if old_mac and old_mac.strip() != '':
+            remote1_mac = self.addon.getSetting('remote1_mac')
+            if not remote1_mac or remote1_mac.strip() == '':
+                self.log("Migrating old settings to new multi-remote format", xbmc.LOGINFO)
+                self.addon.setSetting('remote1_mac', old_mac.strip())
+                self.addon.setSetting('remote1_enabled', old_enabled if old_enabled else 'true')
+                self.addon.setSetting('remote1_name', 'Remote 1')
+    
+    def _get_configured_remotes(self):
+        """Get list of configured and enabled remotes
+        
+        Returns:
+            list: List of tuples (name, mac_address) for enabled remotes
+        """
+        remotes = []
+        for i in range(1, 5):  # Support up to 4 remotes
+            enabled = self.addon.getSetting(f'remote{i}_enabled')
+            mac = self.addon.getSetting(f'remote{i}_mac')
+            name = self.addon.getSetting(f'remote{i}_name')
+            
+            if enabled == 'true' and mac and mac.strip() != '':
+                remote_name = name if name and name.strip() != '' else f'Remote {i}'
+                remotes.append((remote_name, mac.strip()))
+        
+        return remotes
+    
     def start(self):
         """Start the service"""
         self.log("Service starting...", xbmc.LOGINFO)
         
-        # Check if service is enabled (default to true if not set)
-        enabled = self.addon.getSetting('enabled')
-        if enabled == 'false':
-            self.log("Service is disabled in settings", xbmc.LOGINFO)
-            self.notify(30205, xbmcgui.NOTIFICATION_WARNING)  # "Service disabled"
-            return
+        # Migrate old settings if they exist
+        self._migrate_old_settings()
         
-        # Get MAC address
-        mac_address = self.addon.getSetting('mac_address')
-        if not mac_address or mac_address.strip() == '':
-            self.log("No MAC address configured", xbmc.LOGWARNING)
+        # Get configured remotes
+        # TODO: Multi-remote support - currently only connecting to first remote
+        remotes = self._get_configured_remotes()
+        
+        if not remotes:
+            self.log("No remotes configured or enabled", xbmc.LOGWARNING)
             self.notify(30204, xbmcgui.NOTIFICATION_WARNING)  # "No MAC address"
             return
         
-        mac_address = mac_address.strip()
+        # For now, only use the first remote
+        # Multi-remote connection support will be added in a future update
+        remote_name, mac_address = remotes[0]
+        if len(remotes) > 1:
+            self.log(f"Multiple remotes configured. Currently connecting to first: {remote_name}", xbmc.LOGINFO)
         
         # Start async event loop
         try:

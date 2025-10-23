@@ -37,6 +37,74 @@ msgctxt "#30004"
 msgid "Bluetooth MAC address of your Siri Remote (e.g., 48:A9:1C:XX:XX:XX)"
 msgstr ""
 
+# Settings - Remote 1
+msgctxt "#30010"
+msgid "Remote 1"
+msgstr ""
+
+msgctxt "#30011"
+msgid "Enable Remote 1"
+msgstr ""
+
+msgctxt "#30012"
+msgid "MAC Address"
+msgstr ""
+
+msgctxt "#30013"
+msgid "Remote Name"
+msgstr ""
+
+# Settings - Remote 2
+msgctxt "#30020"
+msgid "Remote 2"
+msgstr ""
+
+msgctxt "#30021"
+msgid "Enable Remote 2"
+msgstr ""
+
+msgctxt "#30022"
+msgid "MAC Address"
+msgstr ""
+
+msgctxt "#30023"
+msgid "Remote Name"
+msgstr ""
+
+# Settings - Remote 3
+msgctxt "#30030"
+msgid "Remote 3"
+msgstr ""
+
+msgctxt "#30031"
+msgid "Enable Remote 3"
+msgstr ""
+
+msgctxt "#30032"
+msgid "MAC Address"
+msgstr ""
+
+msgctxt "#30033"
+msgid "Remote Name"
+msgstr ""
+
+# Settings - Remote 4
+msgctxt "#30040"
+msgid "Remote 4"
+msgstr ""
+
+msgctxt "#30041"
+msgid "Enable Remote 4"
+msgstr ""
+
+msgctxt "#30042"
+msgid "MAC Address"
+msgstr ""
+
+msgctxt "#30043"
+msgid "Remote Name"
+msgstr ""
+
 # Settings - Debug
 msgctxt "#30100"
 msgid "Debug"
