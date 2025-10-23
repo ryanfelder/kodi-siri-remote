@@ -50,6 +50,12 @@ class KodiRemoteListener(RemoteListener):
         if self.debug_enabled:
             self.log(f"Charging: {charging}")
     
+    async def inhibit_screensaver(self):
+        """Inhibit the screensaver"""
+        xbmc.executebuiltin('InhibitScreensaver(True)')
+        await asyncio.sleep(0.5)
+        xbmc.executebuiltin('InhibitScreensaver(False)')
+    
     def event_button(self, button: int):
         """Button press event - convert to Kodi actions"""
         if self.debug_enabled and self.debug_buttons:
@@ -66,11 +72,11 @@ class KodiRemoteListener(RemoteListener):
             if self.debug_buttons:
                 self.log("Screensaver active - waking and discarding button event", xbmc.LOGINFO)
             # Send a simple action to wake the screensaver
-            xbmc.executebuiltin('InhibitScreensaver(True)')
-            time.sleep(0.5)
-            xbmc.executebuiltin('InhibitScreensaver(False)')
+            asyncio.create_task(self.inhibit_screensaver())
             return
-        
+        else:
+            asyncio.create_task(self.inhibit_screensaver())
+
         # Map buttons to Kodi actions
         # Note: We trigger on press, not release, so each button press executes immediately
         if button & SiriRemote.BUTTON_HOME:
