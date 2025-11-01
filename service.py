@@ -278,9 +278,15 @@ class SiriRemoteService:
         listener = KodiRemoteListener(self.addon, remote_name)
         
         # Create logger function for the remote
+        # Always log important messages, but filter verbose debug messages
         debug_enabled = self.addon.getSetting('debug_enabled') == 'true'
         def remote_logger(msg):
-            if debug_enabled:
+            # Always log connection status, errors, and important messages
+            important_keywords = ['Connecting', 'Connected', 'disconnected', 'error', 'Error', 
+                                  'failed', 'Failed', 'Waiting', 'ready', 'Warning']
+            is_important = any(keyword in msg for keyword in important_keywords)
+            
+            if debug_enabled or is_important:
                 self.log(f"[{remote_name}] {msg}", xbmc.LOGINFO)
         
         remote = SiriRemote(mac, listener, logger=remote_logger)
@@ -317,12 +323,17 @@ class SiriRemoteService:
             self.log("No remotes to connect", xbmc.LOGWARNING)
             return
         
-        self.log(f"Starting {len(remotes)} remote connection(s)...", xbmc.LOGINFO)
-        self.log("Note: Remote connections will retry automatically if devices are not immediately available", xbmc.LOGINFO)
+        self.log(f"Starting monitoring for {len(remotes)} remote(s)...", xbmc.LOGINFO)
+        self.log("Remotes will auto-connect when they wake up from sleep", xbmc.LOGINFO)
         
-        # Create tasks for all remotes
+        # Create tasks for all remotes with staggered start
+        # Brief delay between remotes to avoid overwhelming D-Bus
         tasks = []
-        for remote_name, mac in remotes:
+        for idx, (remote_name, mac) in enumerate(remotes):
+            # Small stagger to avoid D-Bus contention
+            if idx > 0:
+                await asyncio.sleep(1)
+            
             task = asyncio.create_task(self.connect_remote(remote_name, mac))
             tasks.append(task)
             self.tasks.append(task)
@@ -404,7 +415,7 @@ class SiriRemoteService:
         """Start the service"""
         self.log("Service starting...", xbmc.LOGINFO)
         
-        # Wait a moment for system to stabilize after boot
+        # Wait for system to stabilize after boot
         # This helps ensure Bluetooth and D-Bus services are ready
         self.log("Waiting for system initialization...", xbmc.LOGINFO)
         time.sleep(3)
@@ -438,8 +449,9 @@ class SiriRemoteService:
                 return
             
             # Run all remote connections concurrently
-            # Note: "Connected" notification shown here means service is starting,
-            # individual remotes will connect/reconnect automatically
+            # Note: Remotes may not connect immediately if they're asleep
+            # They will auto-connect when you press any button on them
+            self.log("Remote monitoring active. Remotes will connect when they wake up.", xbmc.LOGINFO)
             self.notify(30201, xbmcgui.NOTIFICATION_INFO)  # "Connected"
             self.loop.run_until_complete(self.run_all_remotes(remotes))
             

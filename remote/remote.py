@@ -59,31 +59,55 @@ class SiriRemote:
 
     async def connect_and_run(self):
         """Connect to the remote and run the event loop with auto-reconnect"""
-        first_attempt = True
+        device_not_found_logged = False
+        connection_error_count = 0
+        
         while True:
             try:
                 await self._setup()
+                # Reset counters on successful connection
+                device_not_found_logged = False
+                connection_error_count = 0
             except Exception as e:
                 error_type = type(e).__name__
                 error_msg = str(e)
+                connection_error_count += 1
                 
-                # On first attempt, use a longer delay to let system stabilize
-                delay = 5 if first_attempt else 2
-                
-                # Provide helpful error context
-                if "Unknown object" in error_msg or "does not exist" in error_msg:
-                    self._log(f"Device not found in Bluetooth. Ensure {self._mac} is paired and trusted. Retrying in {delay}s...")
+                # Check if device doesn't exist or isn't connected (remote is asleep)
+                if ("Unknown object" in error_msg or "does not exist" in error_msg or 
+                    "not connected" in error_msg.lower() or "waiting for it to wake up" in error_msg.lower()):
+                    # Device not found/connected - this is expected if remote is asleep
+                    # Use longer delay and less verbose logging
+                    if not device_not_found_logged:
+                        self._log(f"Remote is asleep, waiting for it to wake up...")
+                        self._log(f"Device will auto-connect when you press any button on the remote")
+                        device_not_found_logged = True
+                    elif connection_error_count % 12 == 0:  # Log every ~2 minutes
+                        self._log(f"Still waiting for remote to wake up... (press any button)")
+                    
+                    delay = 10  # Wait 10 seconds when device isn't connected
+                elif "In Progress" in error_msg or "InProgress" in error_msg:
+                    # Another connection attempt is in progress - wait longer
+                    if connection_error_count == 1:
+                        self._log(f"Bluetooth connection in progress, waiting for it to complete...")
+                    delay = 10  # Wait 10 seconds for ongoing connection to complete
+                    device_not_found_logged = False
                 else:
+                    # Other connection error - log it and retry sooner
                     self._log(f"Connection error ({error_type}): {error_msg}")
-                    self._log(f"Reconnecting in {delay} seconds...")
+                    self._log(f"Reconnecting in 3 seconds...")
+                    delay = 3
+                    device_not_found_logged = False  # Reset so we log if device disappears
                 
                 self._listener.event_button(0)
                 await asyncio.sleep(delay)
-                first_attempt = False
 
     async def _setup(self):
         """Setup connection and enable notifications via D-Bus"""
-        self._log(f"Connecting to {self._mac}...")
+        self._log(f"Checking device {self._mac}...")
+        
+        # Clear any stale characteristic data from previous connections
+        self._characteristics = {}
         
         # Connect to system D-Bus
         self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
@@ -94,16 +118,17 @@ class SiriRemote:
             introspection = await self._bus.introspect('org.bluez', device_path)
             device_proxy = self._bus.get_proxy_object('org.bluez', device_path, introspection)
             device_props = device_proxy.get_interface('org.freedesktop.DBus.Properties')
-            device_iface = device_proxy.get_interface('org.bluez.Device1')
             
             # Check if connected
             connected = await device_props.call_get('org.bluez.Device1', 'Connected')
             if not connected.value:
-                self._log("Connecting to device...")
-                await device_iface.call_connect()
-                await asyncio.sleep(1)
+                # Device not connected - don't force it, just wait for it to wake up
+                raise Exception("Device not connected - waiting for it to wake up")
             
-            self._log("Connected")
+            self._log("Device already connected, setting up...")
+            
+            # Wait a moment for connection to stabilize
+            await asyncio.sleep(0.5)
             
             # Discover GATT services and characteristics
             await self._discover_characteristics(device_path)
@@ -114,7 +139,7 @@ class SiriRemote:
             # Write magic bytes
             await self._write_magic_bytes()
             
-            self._log("Ready")
+            self._log("✓ Remote connected and ready!")
             
             # Keep running
             self._running = True
@@ -124,6 +149,9 @@ class SiriRemote:
         finally:
             if self._bus:
                 self._bus.disconnect()
+            # Only log disconnect if we were actually running (not startup failure)
+            if self._running:
+                self._log("Remote disconnected")
 
     async def _discover_characteristics(self, device_path):
         """Discover all GATT characteristics"""
@@ -166,6 +194,19 @@ class SiriRemote:
                     char_proxy = self._bus.get_proxy_object('org.bluez', char_path, introspection)
                     char_props = char_proxy.get_interface('org.freedesktop.DBus.Properties')
                     char_iface = char_proxy.get_interface('org.bluez.GattCharacteristic1')
+                    
+                    # Check if already notifying - if so, stop it first to ensure clean state
+                    try:
+                        notifying = await char_props.call_get('org.bluez.GattCharacteristic1', 'Notifying')
+                        if notifying.value:
+                            self._log(f"Characteristic {name} already notifying, stopping first...")
+                            try:
+                                await char_iface.call_stop_notify()
+                                await asyncio.sleep(0.2)
+                            except:
+                                pass  # Ignore errors stopping
+                    except:
+                        pass  # Property might not exist
                     
                     # Listen for value changes
                     def make_handler(char_name):
